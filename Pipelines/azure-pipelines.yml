@@ -34,7 +34,7 @@ stages:
   - stage: verify_and_build_package_stage
     displayName: Verify and Build Package Stage
     dependsOn: check_for_changes_stage
-    condition: eq(dependencies.check_for_changes_stage.output['check_for_changes_job.CheckChanges.HasChanges'], 'True')
+    condition: eq(dependencies.check_for_changes_stage.outputs['check_for_changes_job.CheckChanges.HasChanges'], 'True')
     jobs:
       - job: verify_package_version
         displayName: Verify Package Version
