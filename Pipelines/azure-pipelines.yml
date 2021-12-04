@@ -9,6 +9,48 @@ stages:
     displayName: Verify and Build Package Stage
     dependsOn: []
     jobs:
+      - job: verify_package_version
+        displayName: Verify Package Version
+        steps:
+          - task: PowerShell@2
+            displayName: Retrieve latest version from private feed
+            inputs:
+              targetType: inline
+              failOnStderr: true
+              script: |
+                $Credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
+
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic' + $Credential}
+                
+                $package = $response.value | where { $_.name -eq "ContractOne" }
+                
+                $versionDetails = $package.versions | where { $_.isLatest -eq "true" }
+                
+                if ($versionDetails -eq $null) {
+                  Write-Host "##[debug]Setting 'CurrentVersion' to 0.0.0"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]0.0.0"
+                }
+                else {
+                  Write-Host "##[debug]Setting 'CurrentVersion' to $(versionDetails.version)"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]$(versionDetails.version)"
+                }
+
+          - task: PowerShell@2
+            displayName: Verify new package version
+            inputs:
+              targetType: inline
+              failOnStderr: true
+              script: |
+                $ProjectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
+                $NewVersion = $ProjectFile.Project.PropertyGroup.VersionPrefix
+
+                if ($(CurrentVersion) -eq $NewVersion) {
+                  Write-Error "Package version bump is required"
+                }
+                else {
+                  Write-Host "New version detected"
+                }
+              
       - job: verify_and_build_package_job
         displayName: Verify and Build Package Job
         steps:
