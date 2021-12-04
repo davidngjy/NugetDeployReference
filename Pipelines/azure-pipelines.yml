@@ -44,6 +44,9 @@ stages:
                 $ProjectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
                 $NewVersion = $ProjectFile.Project.PropertyGroup.VersionPrefix
 
+                Write-Host 'Current Version' + $env:CurrentVersion
+                Write-Host 'New Version' + $NewVersion
+
                 if ($env:CurrentVersion -eq $NewVersion) {
                   Write-Error "Package version bump is required"
                 }
