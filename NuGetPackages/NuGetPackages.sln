@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30114.105
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContractOne", "ContractOne\ContractOne.csproj", "{03F1F0D4-696D-4510-94DC-0D22807E77B5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContractTwo", "ContractTwo\ContractTwo.csproj", "{1221396C-157E-438A-A424-4FE115D7E291}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{03F1F0D4-696D-4510-94DC-0D22807E77B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03F1F0D4-696D-4510-94DC-0D22807E77B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03F1F0D4-696D-4510-94DC-0D22807E77B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03F1F0D4-696D-4510-94DC-0D22807E77B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1221396C-157E-438A-A424-4FE115D7E291}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1221396C-157E-438A-A424-4FE115D7E291}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1221396C-157E-438A-A424-4FE115D7E291}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1221396C-157E-438A-A424-4FE115D7E291}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
