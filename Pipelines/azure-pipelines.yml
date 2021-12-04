@@ -20,7 +20,7 @@ stages:
               script: |
                 $Credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
 
-                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic' + $Credential}
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $Credential}
                 
                 $package = $response.value | where { $_.name -eq "ContractOne" }
                 
@@ -51,8 +51,9 @@ stages:
                   Write-Host "New version detected"
                 }
               
-      - job: verify_and_build_package_job
-        displayName: Verify and Build Package Job
+      - job: build_package_job
+        displayName: Build Package Job
+        dependsOn: verify_package_version
         steps:
           - task: UseDotNet@2
             displayName: Use .NET 6.x SDK
