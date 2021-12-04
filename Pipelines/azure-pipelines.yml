@@ -1,0 +1,30 @@
+trigger: 
+  - main
+
+pr:
+  - main
+
+steps:
+  - task: UseDotNet@2
+    displayName: Use .NET 6.x SDK
+    inputs:
+      version: 6.x
+    
+  - task: DotNetCoreCLI@2
+    displayName: Build ContractOne
+    inputs:
+      command: build
+      projects: NuGetPackages/ContractOne/ContractOne.csproj
+
+  - task: DotNetCoreCLI@2
+    displayName: Pack Contract Projects
+    inputs: 
+      command: pack
+      outputDir: $(Build.ArtifactStagingDirectory)
+      projects: NuGetPackages/ContractOne/ContractOne.csproj
+
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: push
+      searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
+      feedPublish: NuGetReferenceFeed
