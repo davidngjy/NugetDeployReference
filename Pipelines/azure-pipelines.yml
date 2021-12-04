@@ -28,11 +28,11 @@ stages:
                 
                 if ($versionDetails -eq $null) {
                   Write-Host "##[debug]Setting 'CurrentVersion' to 0.0.0"
-                  Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]0.0.0"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion]0.0.0"
                 }
                 else {
                   Write-Host "##[debug]Setting 'CurrentVersion' to $($versionDetails.version)"
-                  Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]$($versionDetails.version)"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion]$($versionDetails.version)"
                 }
 
           - task: PowerShell@2
@@ -44,7 +44,7 @@ stages:
                 $ProjectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
                 $NewVersion = $ProjectFile.Project.PropertyGroup.VersionPrefix
 
-                if ($(CurrentVersion) -eq $NewVersion) {
+                if ($env:CurrentVersion -eq $NewVersion) {
                   Write-Error "Package version bump is required"
                 }
                 else {
