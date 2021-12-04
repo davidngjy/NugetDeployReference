@@ -111,14 +111,22 @@ stages:
                   inputs:
                     version: 6.x
                 
-                - task: DotNetCoreCLI@2
-                  displayName: Pack ContractOne
-                  inputs:
-                    command: pack
-                    outputDir: $(Build.ArtifactStagingDirectory)
-                    packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
-                    ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+                - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+                  - task: DotNetCoreCLI@2
+                    displayName: Pack ContractOne
+                    inputs:
+                      command: pack
+                      outputDir: $(Build.ArtifactStagingDirectory)
+                      packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
                       arguments: --version-suffix preview-$(Build.BuildId)
+
+                - ${{ else }}:
+                  - task: DotNetCoreCLI@2
+                    displayName: Pack ContractOne (Preview)
+                    inputs:
+                      command: pack
+                      outputDir: $(Build.ArtifactStagingDirectory)
+                      packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
 
                 - task: DotNetCoreCLI@2
                   displayName: Publish ContractOne to NuGet Feed
