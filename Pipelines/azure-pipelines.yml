@@ -117,7 +117,7 @@ stages:
                     command: pack
                     outputDir: $(Build.ArtifactStagingDirectory)
                     packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
-                    ${{ if $(variables['Build.Reason'], 'PullRequest') }}:
+                    ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
                       arguments: --version-suffix preview-$(Build.BuildId)
 
                 - task: DotNetCoreCLI@2
