@@ -18,21 +18,23 @@ stages:
               targetType: inline
               failOnStderr: true
               script: |
-                $Credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
+                $credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
 
-                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $Credential}
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
                 
                 $package = $response.value | where { $_.name -eq "ContractOne" }
                 
                 $versionDetails = $package.versions | where { $_.isLatest -eq "true" }
+
+                $latestVersion = $versionDetails.version
                 
-                if ($versionDetails -eq $null) {
+                if ($latestVersion -eq $null) {
                   Write-Host "##[debug]Setting 'CurrentVersion' to 0.0.0"
                   Write-Host "##vso[task.setvariable variable=CurrentVersion]0.0.0"
                 }
                 else {
-                  Write-Host "##[debug]Setting 'CurrentVersion' to $($versionDetails.version)"
-                  Write-Host "##vso[task.setvariable variable=CurrentVersion]$versionDetails.version"
+                  Write-Host "##[debug]Setting 'CurrentVersion' to $($latestVersion)"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion]$latestVersion"
                 }
 
           - task: PowerShell@2
@@ -41,13 +43,13 @@ stages:
               targetType: inline
               failOnStderr: true
               script: |
-                $ProjectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
-                $NewVersion = $ProjectFile.Project.PropertyGroup.VersionPrefix
+                $projectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
+                $newVersion = $projectFile.Project.PropertyGroup.VersionPrefix
 
-                Write-Host 'Current Version' + $env:CurrentVersion
-                Write-Host 'New Version' + $NewVersion
+                Write-Host "Current Version $(CurrentVersion)"
+                Write-Host "New Version $newVersion"
 
-                if ($env:CurrentVersion -eq $NewVersion) {
+                if ($(CurrentVersion) -eq $newVersion) {
                   Write-Error "Package version bump is required"
                 }
                 else {
