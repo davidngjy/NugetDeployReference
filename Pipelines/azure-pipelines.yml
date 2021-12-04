@@ -31,8 +31,8 @@ stages:
                   Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]0.0.0"
                 }
                 else {
-                  Write-Host "##[debug]Setting 'CurrentVersion' to $(versionDetails.version)"
-                  Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]$(versionDetails.version)"
+                  Write-Host "##[debug]Setting 'CurrentVersion' to $($versionDetails.version)"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion;isOutput=true]$($versionDetails.version)"
                 }
 
           - task: PowerShell@2
