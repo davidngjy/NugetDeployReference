@@ -4,27 +4,53 @@ trigger:
 pr:
   - main
 
-steps:
-  - task: UseDotNet@2
-    displayName: Use .NET 6.x SDK
-    inputs:
-      version: 6.x
-    
-  - task: DotNetCoreCLI@2
-    displayName: Build ContractOne
-    inputs:
-      command: build
-      projects: NuGetPackages/ContractOne/ContractOne.csproj
+stages:
+  - stage: verify_and_build_package_stage
+    displayName: Verify and Build Package Stage
+    dependsOn: []
+    jobs:
+      - job: verify_and_build_package_job
+        displayName: Verify and Build Package Job
+        steps:
+          - task: UseDotNet@2
+            displayName: Use .NET 6.x SDK
+            inputs:
+              version: 6.x
+            
+          - task: DotNetCoreCLI@2
+            displayName: Build ContractOne
+            inputs:
+              command: build
+              projects: NuGetPackages/ContractOne/ContractOne.csproj
 
-  - task: DotNetCoreCLI@2
-    displayName: Pack Contract Projects
-    inputs: 
-      command: pack
-      outputDir: $(Build.ArtifactStagingDirectory)
-      projects: NuGetPackages/ContractOne/ContractOne.csproj
+  - stage: publish_nuget_package_stage
+    displayName: Publish Nuget Package Stage
+    dependsOn: verify_and_build_package_stage
+    jobs:
+      - deployment: publish_nuget_package_job
+        displayName: Publish Nuget Package Job
+        environment: Publish-NuGet-Package
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
 
-  - task: DotNetCoreCLI@2
-    inputs:
-      command: push
-      searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
-      feedPublish: NuGetReferenceFeed
+                - task: UseDotNet@2
+                  displayName: Use .NET 6.x SDK
+                  inputs:
+                    version: 6.x
+                
+                - task: DotNetCoreCLI@2
+                  displayName: Pack ContractOne
+                  inputs:
+                    command: pack
+                    outputDir: $(Build.ArtifactStagingDirectory)
+                    packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
+
+                - task: DotNetCoreCLI@2
+                  displayName: Publish ContractOne to NuGet Feed
+                  inputs:
+                    command: push
+                    searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
+                    feedPublish: NuGetReferenceFeed
