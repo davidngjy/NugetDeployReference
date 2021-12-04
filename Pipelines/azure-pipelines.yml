@@ -113,16 +113,15 @@ stages:
                 
                 - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
                   - task: DotNetCoreCLI@2
-                    displayName: Pack ContractOne
+                    displayName: Pack ContractOne (Preview)
                     inputs:
-                      command: pack
-                      outputDir: $(Build.ArtifactStagingDirectory)
-                      packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
-                      arguments: --version-suffix preview-$(Build.BuildId)
+                      command: custom
+                      custom: pack
+                      arguments: NuGetPackages/ContractOne/ContractOne.csproj --version-suffix preview-$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)
 
                 - ${{ else }}:
                   - task: DotNetCoreCLI@2
-                    displayName: Pack ContractOne (Preview)
+                    displayName: Pack ContractOne
                     inputs:
                       command: pack
                       outputDir: $(Build.ArtifactStagingDirectory)
