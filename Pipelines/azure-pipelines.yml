@@ -4,27 +4,123 @@ trigger:
 pr:
   - main
 
-steps:
-  - task: UseDotNet@2
-    displayName: Use .NET 6.x SDK
-    inputs:
-      version: 6.x
-    
-  - task: DotNetCoreCLI@2
-    displayName: Build ContractOne
-    inputs:
-      command: build
-      projects: NuGetPackages/ContractOne/ContractOne.csproj
+stages:
+  - stage: check_for_changes_stage
+    displayName: Check for Changes Stage
+    dependsOn: []
+    jobs:
+      - job: check_for_changes_job
+        displayName: Check for Changes Job
+        steps:
+          - task: PowerShell@2
+            displayName: Check For Changes
+            name: CheckChanges
+            inputs:
+              ignoreLASTEXITCODE: true
+              targetType: inline
+              script: |
+                
+                git diff --quiet refs/remotes/origin/main -- NuGetPackages/ContractOne
 
-  - task: DotNetCoreCLI@2
-    displayName: Pack Contract Projects
-    inputs: 
-      command: pack
-      outputDir: $(Build.ArtifactStagingDirectory)
-      projects: NuGetPackages/ContractOne/ContractOne.csproj
+                if ($LASTEXITCODE) {
+                  echo "##[debug]Setting 'HasChanges' to True"
+                  echo "##vso[task.setvariable variable=HasChanges;isOutput=true]True"
+                }
+                else {
+                  echo "##[debug]Setting 'HasChanges' to False"
+                  echo "##vso[task.setvariable variable=HasChanges;isOutput=true]False"
+                }
 
-  - task: DotNetCoreCLI@2
-    inputs:
-      command: push
-      searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
-      feedPublish: NuGetReferenceFeed
+  - stage: verify_and_build_package_stage
+    displayName: Verify and Build Package Stage
+    dependsOn: check_for_changes_stage
+    condition: eq(dependencies.check_for_changes_stage.outputs['check_for_changes_job.CheckChanges.HasChanges'], 'True')
+    jobs:
+      - job: verify_package_version
+        displayName: Verify Package Version
+        steps:
+          - task: PowerShell@2
+            displayName: Retrieve latest version from private feed
+            inputs:
+              targetType: inline
+              script: |
+                $credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
+
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
+                
+                $package = $response.value | where { $_.name -eq "ContractOne" }
+                
+                $versionDetails = $package.versions | where { $_.isLatest -eq "true" }
+
+                $latestVersion = $versionDetails.version
+                
+                if ($latestVersion -eq $null) {
+                  Write-Host "##[debug]Setting 'CurrentVersion' to 0.0.0"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion]0.0.0"
+                }
+                else {
+                  Write-Host "##[debug]Setting 'CurrentVersion' to $($latestVersion)"
+                  Write-Host "##vso[task.setvariable variable=CurrentVersion]$latestVersion"
+                }
+
+          - task: PowerShell@2
+            displayName: Verify new package version
+            inputs:
+              targetType: inline
+              script: |
+                $projectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
+                $newVersion = $projectFile.Project.PropertyGroup.VersionPrefix
+
+                if ("$(CurrentVersion)" -eq $newVersion) {
+                  Write-Error "Package version bump is required"
+                }
+                else {
+                  Write-Host "New version detected"
+                }
+              
+      - job: build_package_job
+        displayName: Build Package Job
+        dependsOn: verify_package_version
+        steps:
+          - task: UseDotNet@2
+            displayName: Use .NET 6.x SDK
+            inputs:
+              version: 6.x
+            
+          - task: DotNetCoreCLI@2
+            displayName: Build ContractOne
+            inputs:
+              command: build
+              projects: NuGetPackages/ContractOne/ContractOne.csproj
+
+  - stage: publish_nuget_package_stage
+    displayName: Publish Nuget Package Stage
+    dependsOn: verify_and_build_package_stage
+    jobs:
+      - deployment: publish_nuget_package_job
+        displayName: Publish Nuget Package Job
+        environment: Publish-NuGet-Package
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UseDotNet@2
+                  displayName: Use .NET 6.x SDK
+                  inputs:
+                    version: 6.x
+                
+                - task: DotNetCoreCLI@2
+                  displayName: Pack ContractOne
+                  inputs:
+                    command: pack
+                    outputDir: $(Build.ArtifactStagingDirectory)
+                    packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
+
+                - task: DotNetCoreCLI@2
+                  displayName: Publish ContractOne to NuGet Feed
+                  inputs:
+                    command: push
+                    searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
+                    feedPublish: NuGetReferenceFeed
