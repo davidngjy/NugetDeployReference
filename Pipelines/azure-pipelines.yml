@@ -49,7 +49,7 @@ stages:
                 Write-Host "Current Version $(CurrentVersion)"
                 Write-Host "New Version $newVersion"
 
-                if ($(CurrentVersion) -eq $newVersion) {
+                if ("$(CurrentVersion)" -eq $newVersion) {
                   Write-Error "Package version bump is required"
                 }
                 else {
