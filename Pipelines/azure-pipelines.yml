@@ -24,12 +24,12 @@ stages:
                 git diff --quiet refs/remotes/origin/main -- NuGetPackages/ContractOne
 
                 if ($LASTEXITCODE) {
-                  echo "##[debug]Setting 'HasChanges' to True"
-                  echo "##vso[task.setvariable variable=HasChanges;isOutput=true]True"
+                  Write-Host "##[debug]Setting 'HasChanges' to True"
+                  Write-Host "##vso[task.setvariable variable=HasChanges;isOutput=true]True"
                 }
                 else {
-                  echo "##[debug]Setting 'HasChanges' to False"
-                  echo "##vso[task.setvariable variable=HasChanges;isOutput=true]False"
+                  Write-Host "##[debug]Setting 'HasChanges' to False"
+                  Write-Host "##vso[task.setvariable variable=HasChanges;isOutput=true]False"
                 }
 
   - stage: verify_and_build_package_stage
@@ -67,8 +67,8 @@ stages:
                 
                 $latestVersion = $filteredVersions[0].version
                 
-                Write-Host "##[debug]Setting 'CurrentVersion' to $($latestVersion)"
-                Write-Host "##vso[task.setvariable variable=CurrentVersion]$latestVersion"
+                Write-Host "##[debug]Setting 'LatestVersion' to $($latestVersion)"
+                Write-Host "##vso[task.setvariable variable=LatestVersion]$latestVersion"
 
           - task: PowerShell@2
             displayName: Verify new package version
@@ -78,7 +78,7 @@ stages:
                 $projectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
                 $newVersion = $projectFile.Project.PropertyGroup.VersionPrefix
 
-                if ("$(CurrentVersion)" -eq $newVersion) {
+                if ("$(LatestVersion)" -eq $newVersion) {
                   Write-Error "Package version bump is required"
                 }
                 else {
@@ -137,14 +137,66 @@ stages:
                     searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
                     feedPublish: NuGetReferenceFeed
 
+  - stage: check_for_new_release_stage
+    displayName: Check for new Release Stage
+    dependsOn: []
+    condition: eq(variables['Build.Reason'], 'IndividualCI')
+    jobs:
+      - job: check_package_version
+        displayName: Check Package Version
+        steps:
+          - task: PowerShell@2
+            displayName: Retrieve latest release version from private feed
+            inputs:
+              targetType: inline
+              script: |
+                $credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
+
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
+                
+                $package = $response.value | where { $_.name -eq "ContractOne" }
+                
+                if ($package -eq $null) { 
+                  Write-Host "##[debug]This is a new NuGet package"
+                  return
+                }
+                
+                $packageVersions = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/Packages/$($package.id)/versions?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
+                
+                $filteredVersions = $packageVersions.value | where { $_.version -match '^\d.\d.\d$' } | Sort-Object -Property publishDate -Descending
+                
+                if ($filteredVersions -eq $null) {
+                  Write-Host "##[debug]Package found but no release version yet"
+                  return
+                }
+                
+                $latestVersion = $filteredVersions[0].version
+                
+                Write-Host "##[debug]Setting 'LatestVersion' to $($latestVersion)"
+                Write-Host "##vso[task.setvariable variable=LatestVersion]$latestVersion"
+
+          - task: PowerShell@2
+            displayName: Check Current Package Version
+            name: CheckCurrentPackageVersion
+            inputs:
+              targetType: inline
+              script: |
+                $projectFile = [Xml] (Get-Content NuGetPackages/ContractOne/ContractOne.csproj)
+                $currentVersion = $projectFile.Project.PropertyGroup.VersionPrefix
+
+                if ("$(LatestVersion)" -eq $currentVersion) {
+                  Write-Host "##[debug]Setting 'New Release' to False"
+                  Write-Host "##vso[task.setvariable variable=NewRelease;isOutput=true]False"
+                }
+                else {
+                  Write-Host "##[debug]Setting 'New Release' to True"
+                  Write-Host "##vso[task.setvariable variable=NewRelease;isOutput=true]True"
+                }
+
   - stage: publish_release_nuget_package_stage
     displayName: Publish Release Nuget Package Stage
-    dependsOn: verify_and_build_package_stage
-    condition: | 
-      and(
-        not(failed()),
-        eq(variables['Build.Reason'], 'IndividualCI')
-      )
+    dependsOn: check_for_new_release_stage
+    condition: eq(dependencies.check_for_new_release_stage.outputs['check_package_version.CheckCurrentPackageVersion.NewRelease'], 'True')
     jobs:
       - job: publish_release_nuget_package_job
         displayName: Publish Release Nuget Package job
