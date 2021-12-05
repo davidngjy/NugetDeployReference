@@ -1,5 +1,5 @@
 ﻿namespace ContractOne;
-public class Class2
+public class Class1
 {   
     
 }
