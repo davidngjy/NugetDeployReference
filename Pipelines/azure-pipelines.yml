@@ -40,7 +40,7 @@ stages:
         displayName: Verify Package Version
         steps:
           - task: PowerShell@2
-            displayName: Retrieve latest version from private feed
+            displayName: Retrieve latest release version from private feed
             inputs:
               targetType: inline
               script: |
@@ -50,18 +50,24 @@ stages:
                 
                 $package = $response.value | where { $_.name -eq "ContractOne" }
                 
-                $versionDetails = $package.versions | where { $_.isLatest -eq "true" }
-
-                $latestVersion = $versionDetails.version
+                if ($package -eq $null) { 
+                  Write-Host "##[debug]This is a new NuGet package"
+                  return
+                }
                 
-                if ($latestVersion -eq $null) {
-                  Write-Host "##[debug]Setting 'CurrentVersion' to 0.0.0"
-                  Write-Host "##vso[task.setvariable variable=CurrentVersion]0.0.0"
+                $packageVersions = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/Packages/$($package.id)/versions?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
+                
+                $filteredVersions = $packageVersions.value | where { $_.version -match '^\d.\d.\d$' } | Sort-Object -Property publishDate -Descending
+                
+                if ($filteredVersions -eq $null) {
+                  Write-Host "##[debug]Package found but no release version yet"
+                  return
                 }
-                else {
-                  Write-Host "##[debug]Setting 'CurrentVersion' to $($latestVersion)"
-                  Write-Host "##vso[task.setvariable variable=CurrentVersion]$latestVersion"
-                }
+                
+                $latestVersion = $filteredVersions[0].version
+                
+                Write-Host "##[debug]Setting 'CurrentVersion' to $($latestVersion)"
+                Write-Host "##vso[task.setvariable variable=CurrentVersion]$latestVersion"
 
           - task: PowerShell@2
             displayName: Verify new package version
@@ -93,12 +99,17 @@ stages:
               command: build
               projects: NuGetPackages/ContractOne/ContractOne.csproj
 
-  - stage: publish_nuget_package_stage
-    displayName: Publish Nuget Package Stage
+  - stage: publish_prerelease_nuget_package_stage
+    displayName: Publish Prerelease Nuget Package Stage
     dependsOn: verify_and_build_package_stage
+    condition: | 
+      and(
+        succeeded(),
+        eq(variables['Build.Reason'], 'PullRequest')
+      )
     jobs:
-      - deployment: publish_nuget_package_job
-        displayName: Publish Nuget Package Job
+      - deployment: publish_prerelease_nuget_package_job
+        displayName: Publish Prerelease Nuget Package Job
         environment: Publish-NuGet-Package
         strategy:
           runOnce:
@@ -110,22 +121,13 @@ stages:
                   displayName: Use .NET 6.x SDK
                   inputs:
                     version: 6.x
-                
-                - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
-                  - task: DotNetCoreCLI@2
-                    displayName: Pack ContractOne (Preview)
-                    inputs:
-                      command: custom
-                      custom: pack
-                      arguments: NuGetPackages/ContractOne/ContractOne.csproj --version-suffix preview-$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)
 
-                - ${{ else }}:
-                  - task: DotNetCoreCLI@2
-                    displayName: Pack ContractOne
-                    inputs:
-                      command: pack
-                      outputDir: $(Build.ArtifactStagingDirectory)
-                      packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
+                - task: DotNetCoreCLI@2
+                  displayName: Pack ContractOne (Preview)
+                  inputs:
+                    command: custom
+                    custom: pack
+                    arguments: NuGetPackages/ContractOne/ContractOne.csproj --version-suffix preview-$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)
 
                 - task: DotNetCoreCLI@2
                   displayName: Publish ContractOne to NuGet Feed
@@ -133,3 +135,34 @@ stages:
                     command: push
                     searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
                     feedPublish: NuGetReferenceFeed
+
+  - stage: publish_release_nuget_package_stage
+    displayName: Publish Release Nuget Package Stage
+    dependsOn: verify_and_build_package_stage
+    condition: | 
+      and(
+        not(failed()),
+        eq(variables['Build.Reason'], 'IndividualCI')
+      )
+    jobs:
+      - job: publish_release_nuget_package_job
+        displayName: Publish Release Nuget Package job
+        steps:
+          - task: UseDotNet@2
+            displayName: Use .NET 6.x SDK
+            inputs:
+              version: 6.x
+
+          - task: DotNetCoreCLI@2
+            displayName: Pack ContractOne
+            inputs:
+              command: pack
+              outputDir: $(Build.ArtifactStagingDirectory)
+              packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
+
+          - task: DotNetCoreCLI@2
+            displayName: Publish ContractOne to NuGet Feed
+            inputs:
+              command: push
+              searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
+              feedPublish: NuGetReferenceFeed
