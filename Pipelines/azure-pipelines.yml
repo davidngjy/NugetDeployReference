@@ -8,6 +8,7 @@ stages:
   - stage: check_for_changes_stage
     displayName: Check for Changes Stage
     dependsOn: []
+    condition: eq(variables['Build.Reason'], 'PullRequest')
     jobs:
       - job: check_for_changes_job
         displayName: Check for Changes Job
