@@ -46,7 +46,7 @@ stages:
               script: |
                 $credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
 
-                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic' + $credential}
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
                 
                 $package = $response.value | where { $_.name -eq "ContractOne" }
                 
@@ -55,7 +55,7 @@ stages:
                   return
                 }
                 
-                $packageVersions = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/Packages/$($package.id)/versions?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic' + $credential}
+                $packageVersions = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/Packages/$($package.id)/versions?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
                 
                 $filteredVersions = $packageVersions.value | where { $_.version -match '^\d.\d.\d$' } | Sort-Object -Property publishDate -Descending
                 
