@@ -99,12 +99,17 @@ stages:
               command: build
               projects: NuGetPackages/ContractOne/ContractOne.csproj
 
-  - stage: publish_nuget_package_stage
-    displayName: Publish Nuget Package Stage
+  - stage: publish_prerelease_nuget_package_stage
+    displayName: Publish Prerelease Nuget Package Stage
     dependsOn: verify_and_build_package_stage
+    condition: | 
+      and(
+        succeeded(),
+        eq(variables['Build.Reason'], 'PullRequest')
+      )
     jobs:
-      - deployment: publish_nuget_package_job
-        displayName: Publish Nuget Package Job
+      - deployment: publish_prerelease_nuget_package_job
+        displayName: Publish Prerelease Nuget Package Job
         environment: Publish-NuGet-Package
         strategy:
           runOnce:
@@ -116,22 +121,13 @@ stages:
                   displayName: Use .NET 6.x SDK
                   inputs:
                     version: 6.x
-                
-                - ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
-                  - task: DotNetCoreCLI@2
-                    displayName: Pack ContractOne (Preview)
-                    inputs:
-                      command: custom
-                      custom: pack
-                      arguments: NuGetPackages/ContractOne/ContractOne.csproj --version-suffix preview-$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)
 
-                - ${{ else }}:
-                  - task: DotNetCoreCLI@2
-                    displayName: Pack ContractOne
-                    inputs:
-                      command: pack
-                      outputDir: $(Build.ArtifactStagingDirectory)
-                      packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
+                - task: DotNetCoreCLI@2
+                  displayName: Pack ContractOne (Preview)
+                  inputs:
+                    command: custom
+                    custom: pack
+                    arguments: NuGetPackages/ContractOne/ContractOne.csproj --version-suffix preview-$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)
 
                 - task: DotNetCoreCLI@2
                   displayName: Publish ContractOne to NuGet Feed
@@ -139,3 +135,34 @@ stages:
                     command: push
                     searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
                     feedPublish: NuGetReferenceFeed
+
+  - stage: publish_release_nuget_package_stage
+    displayName: Publish Release Nuget Package Stage
+    dependsOn: verify_and_build_package_stage
+    condition: | 
+      and(
+        not(failed()),
+        eq(variables['Build.Reason'], 'IndividualCI')
+      )
+    jobs:
+      - job: publish_release_nuget_package_job
+        displayName: Publish Release Nuget Package job
+        steps:
+          - task: UseDotNet@2
+            displayName: Use .NET 6.x SDK
+            inputs:
+              version: 6.x
+
+          - task: DotNetCoreCLI@2
+            displayName: Pack ContractOne
+            inputs:
+              command: pack
+              outputDir: $(Build.ArtifactStagingDirectory)
+              packagesToPack: NuGetPackages/ContractOne/ContractOne.csproj
+
+          - task: DotNetCoreCLI@2
+            displayName: Publish ContractOne to NuGet Feed
+            inputs:
+              command: push
+              searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
+              feedPublish: NuGetReferenceFeed
