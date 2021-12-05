@@ -1,0 +1,13 @@
+parameters:
+  nugetPackages: []
+
+stages:
+  - ${{ each package in parameters.nugetPackages }}:
+    - template: nuget-package-stage-pull-request.yml
+      parameters:
+        nugetPackageName: ${{ package.name }}
+        nugetPackageProjectFolder: ${{ package.folder }}
+    - template: nuget-package-stage-ci.yml
+      parameters:
+        nugetPackageName: ${{ package.name }}
+        nugetPackageProjectFolder: ${{ package.folder }}

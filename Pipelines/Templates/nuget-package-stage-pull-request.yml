@@ -1,0 +1,131 @@
+parameters:
+  nugetPackageName: ''
+  nugetPackageProjectFolder: ''
+
+stages:
+  - stage: check_for_${{ lower(parameters.nugetPackageName) }}_changes_stage
+    displayName: Check for ${{ parameters.nugetPackageName }} Changes Stage
+    dependsOn: []
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: check_for_${{ lower(parameters.nugetPackageName) }}_changes_job
+        displayName: Check for ${{ parameters.nugetPackageName }} Changes Job
+        steps:
+          - task: PowerShell@2
+            displayName: Check For ${{ parameters.nugetPackageName }} Changes
+            name: CheckChanges
+            inputs:
+              ignoreLASTEXITCODE: true
+              targetType: inline
+              script: |
+                
+                git diff --quiet refs/remotes/origin/main -- ${{ parameters.nugetPackageProjectFolder }}
+
+                if ($LASTEXITCODE) {
+                  Write-Host "##[debug]Setting 'HasChanges' to True"
+                  Write-Host "##vso[task.setvariable variable=HasChanges;isOutput=true]True"
+                }
+                else {
+                  Write-Host "##[debug]Setting 'HasChanges' to False"
+                  Write-Host "##vso[task.setvariable variable=HasChanges;isOutput=true]False"
+                }
+
+  - stage: verify_and_build_${{ lower(parameters.nugetPackageName) }}_package_stage
+    displayName: Verify and Build ${{ parameters.nugetPackageName }} Package Stage
+    dependsOn: check_for_${{ lower(parameters.nugetPackageName) }}_changes_stage
+    condition: eq(dependencies.check_for_${{ lower(parameters.nugetPackageName) }}_changes_stage.outputs['check_for_${{ lower(parameters.nugetPackageName) }}_changes_job.CheckChanges.HasChanges'], 'True')
+    jobs:
+      - job: verify_${{ lower(parameters.nugetPackageName) }}_package_version
+        displayName: Verify ${{ parameters.nugetPackageName }} Package Version
+        steps:
+          - task: PowerShell@2
+            displayName: Retrieve latest ${{ parameters.nugetPackageName }} release version from private feed
+            inputs:
+              targetType: inline
+              script: |
+                $credential = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(':$(System.AccessToken)'))
+
+                $response = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/packages?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
+                
+                $package = $response.value | where { $_.name -eq "${{ parameters.nugetPackageName }}" }
+                
+                if ($package -eq $null) { 
+                  Write-Host "##[debug]This is a new NuGet package"
+                  return
+                }
+                
+                $packageVersions = Invoke-RestMethod -Uri "https://feeds.dev.azure.com/DavidOrganization/_apis/packaging/Feeds/NuGetReferenceFeed/Packages/$($package.id)/versions?api-version=6.0-preview.1" -Headers @{'Authorization' = 'Basic ' + $credential}
+                
+                $filteredVersions = $packageVersions.value | where { $_.version -match '^\d.\d.\d$' } | Sort-Object -Property publishDate -Descending
+                
+                if ($filteredVersions -eq $null) {
+                  Write-Host "##[debug]Package found but no release version yet"
+                  return
+                }
+                
+                $latestVersion = $filteredVersions[0].version
+                
+                Write-Host "##[debug]Setting 'LatestVersion' to $($latestVersion)"
+                Write-Host "##vso[task.setvariable variable=LatestVersion]$latestVersion"
+
+          - task: PowerShell@2
+            displayName: Verify new ${{ parameters.nugetPackageName }} package version
+            inputs:
+              targetType: inline
+              script: |
+                $projectFile = [Xml] (Get-Content ${{ parameters.nugetPackageProjectFolder }}/${{ parameters.nugetPackageName }}.csproj)
+                $newVersion = $projectFile.Project.PropertyGroup.VersionPrefix
+
+                if ("$(LatestVersion)" -eq $newVersion) {
+                  Write-Error "Package version bump is required"
+                }
+                else {
+                  Write-Host "New version detected"
+                }
+              
+      - job: build_${{ lower(parameters.nugetPackageName) }}_package_job
+        displayName: Build ${{ parameters.nugetPackageName }} Package Job
+        dependsOn: verify_${{ lower(parameters.nugetPackageName) }}_package_version
+        steps:
+          - task: UseDotNet@2
+            displayName: Use .NET 6.x SDK
+            inputs:
+              version: 6.x
+            
+          - task: DotNetCoreCLI@2
+            displayName: Build ${{ parameters.nugetPackageName }}
+            inputs:
+              command: build
+              projects: ${{ parameters.nugetPackageProjectFolder }}/${{ parameters.nugetPackageName }}.csproj
+
+  - stage: publish_${{ lower(parameters.nugetPackageName) }}_prerelease_nuget_package_stage
+    displayName: Publish ${{ parameters.nugetPackageName }} Prerelease Nuget Package Stage
+    dependsOn: verify_and_build_${{ lower(parameters.nugetPackageName) }}_package_stage
+    jobs:
+      - deployment: publish_${{ lower(parameters.nugetPackageName) }}_prerelease_nuget_package_job
+        displayName: Publish ${{ parameters.nugetPackageName }} Prerelease Nuget Package Job
+        environment: Publish-NuGet-Package
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UseDotNet@2
+                  displayName: Use .NET 6.x SDK
+                  inputs:
+                    version: 6.x
+
+                - task: DotNetCoreCLI@2
+                  displayName: Pack ${{ parameters.nugetPackageName }} (Preview)
+                  inputs:
+                    command: custom
+                    custom: pack
+                    arguments: ${{ parameters.nugetPackageProjectFolder }}/${{ parameters.nugetPackageName }}.csproj --version-suffix preview-$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)
+
+                - task: DotNetCoreCLI@2
+                  displayName: Publish ${{ parameters.nugetPackageName }} to NuGet Feed
+                  inputs:
+                    command: push
+                    searchPatternPush: $(Build.ArtifactStagingDirectory)/*.nupkg;!$(Build.ArtifactStagingDirectory)/*.Tests.nupkg
+                    feedPublish: NuGetReferenceFeed
